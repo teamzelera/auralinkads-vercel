@@ -1,0 +1,135 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body {
+    @apply bg-primary-bg text-text-primary;
+    font-family: 'Inter', system-ui, sans-serif;
+    height: 100%;
+    margin: 0;
+  }
+
+  #root {
+    height: 100%;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-primary-card;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-primary-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-accent-purple;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-primary-card border border-primary-border rounded-2xl shadow-card;
+  }
+
+  .btn-primary {
+    @apply bg-accent-purple hover:bg-accent-purple-hover text-white font-semibold px-4 py-2 rounded-xl
+           transition-all duration-200 active:scale-95 shadow-glow hover:shadow-glow
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply bg-primary-border hover:bg-primary-border/80 text-text-primary font-medium px-4 py-2 rounded-xl
+           transition-all duration-200 active:scale-95;
+  }
+
+  .btn-danger {
+    @apply bg-status-offline/20 hover:bg-status-offline/30 text-status-offline font-medium px-4 py-2 rounded-xl
+           border border-status-offline/30 transition-all duration-200 active:scale-95;
+  }
+
+  .input-field {
+    @apply bg-primary-bg border border-primary-border text-text-primary placeholder-text-muted
+           rounded-xl px-4 py-2.5 w-full outline-none
+           focus:border-accent-purple focus:ring-1 focus:ring-accent-purple/50
+           transition-colors duration-200;
+  }
+
+  .badge-online {
+    @apply bg-status-online/20 text-status-online text-xs font-semibold px-2.5 py-1 rounded-full border border-status-online/30;
+  }
+
+  .badge-offline {
+    @apply bg-status-offline/20 text-status-offline text-xs font-semibold px-2.5 py-1 rounded-full border border-status-offline/30;
+  }
+
+  .badge-idle {
+    @apply bg-status-idle/20 text-status-idle text-xs font-semibold px-2.5 py-1 rounded-full border border-status-idle/30;
+  }
+
+  .stat-card {
+    @apply card p-6 hover:border-accent-purple/30 transition-all duration-300 hover:shadow-glow;
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-text-secondary font-medium
+           hover:text-text-primary hover:bg-primary-border/50 transition-all duration-200 cursor-pointer;
+  }
+
+  .sidebar-item-active {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-white font-semibold
+           bg-accent-purple shadow-glow;
+  }
+
+  .table-header {
+    @apply text-text-muted text-xs font-semibold uppercase tracking-wider px-4 py-3 text-left;
+  }
+
+  .table-cell {
+    @apply px-4 py-4 text-sm text-text-secondary;
+  }
+
+  .table-row {
+    @apply border-b border-primary-border hover:bg-primary-border/20 transition-colors duration-150;
+  }
+
+  .modal-overlay {
+    @apply fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4;
+  }
+
+  .modal-content {
+    @apply card p-6 w-full max-w-md animate-fade-in;
+  }
+
+  .status-dot {
+    @apply w-2 h-2 rounded-full inline-block;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    background: linear-gradient(135deg, #6C5CE7, #00D1FF);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .bg-gradient-primary {
+    background: linear-gradient(135deg, #6C5CE7, #00D1FF);
+  }
+
+  .glow-border {
+    border: 1px solid rgba(108, 92, 231, 0.4);
+    box-shadow: 0 0 16px rgba(108, 92, 231, 0.15);
+  }
+}
