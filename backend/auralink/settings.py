@@ -100,8 +100,10 @@ DATABASES = {
     }
 }
 
-if "DATABASE_URL" in os.environ:
+if "DATABASE_URL" in os.environ or "DATABASES" in os.environ:
+    db_env = "DATABASE_URL" if "DATABASE_URL" in os.environ else "DATABASES"
     DATABASES["default"] = dj_database_url.config(
+        env=db_env,
         conn_max_age=600,
         ssl_require=True
     )
