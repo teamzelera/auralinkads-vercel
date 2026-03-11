@@ -6,6 +6,10 @@ from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from devices.views import LocalVideoMetadataView, SendFileView, TransferHistoryView, TransferConfirmView
+from django.http import JsonResponse
+
+def ping_view(request):
+    return JsonResponse({"status": "awake"})
 
 schema_view = get_schema_view(
    openapi.Info(
@@ -21,6 +25,8 @@ schema_view = get_schema_view(
 )
 
 urlpatterns = [
+    path("api/ping/", ping_view),
+    path("ping/", ping_view),
     path("admin/", admin.site.urls),
     path("api/auth/", include("accounts.urls")),
     path("api/devices/", include("devices.urls")),

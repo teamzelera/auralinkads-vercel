@@ -199,12 +199,28 @@ export default function FileTransfer() {
         if (file) validateAndSet(file);
     };
 
-    const handleSend = () => {
+    const handleSend = async () => {
         if (!selectedFile || !deviceCode) return;
         setUploading(true);
-        setStatus("sending");
+        setStatus("waking");
         setProgress(0);
         setError("");
+
+        try {
+            await fetch(`${PLAYER_API}/ping/`);
+        } catch (err) {
+            setStatus("connecting");
+            try {
+                await fetch(`${PLAYER_API}/ping/`);
+            } catch (retryErr) {
+                setUploading(false);
+                setStatus("error");
+                setError("Could not connect to server. Please try again.");
+                return;
+            }
+        }
+
+        setStatus("sending");
 
         const formData = new FormData();
         formData.append("device_code", deviceCode);
@@ -374,7 +390,10 @@ export default function FileTransfer() {
                     {uploading && (
                         <div className="space-y-2">
                             <div className="flex items-center justify-between text-xs text-gray-400">
-                                <span className="flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Sending...</span>
+                                <span className="flex items-center gap-1.5">
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    {status === "waking" ? "Waking server..." : status === "connecting" ? "Connecting to server..." : "Sending..."}
+                                </span>
                                 <span>{progress}%</span>
                             </div>
                             <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
