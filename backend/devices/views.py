@@ -1,6 +1,8 @@
 """
 Devices views — Admin endpoints for device management + Device-facing endpoints.
 """
+import os
+import uuid
 import secrets
 from datetime import timedelta
 from django.utils import timezone
@@ -11,12 +13,20 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
+from rest_framework.parsers import MultiPartParser, FormParser
 
-from .models import Device, Heartbeat
-from .serializers import DeviceSerializer, DeviceCreateSerializer, DeviceAuthSerializer, HeartbeatSerializer
+from .models import Device, Heartbeat, FileTransfer
+from .serializers import (
+    DeviceSerializer, DeviceCreateSerializer, DeviceAuthSerializer,
+    HeartbeatSerializer, FileTransferSerializer,
+)
 from .authentication import DeviceUser
 from playlists.models import DeviceAssignment
 from playlists.serializers import DeviceAssignmentSerializer
+
+# ─── Constants ─────────────────────────────────────────────────────
+MAX_TRANSFER_SIZE = 200 * 1024 * 1024  # 200 MB
+ALLOWED_TRANSFER_TYPES = ["video/mp4", "video/webm", "video/quicktime"]
 
 
 def _broadcast_status_change(device_id, status_val, last_seen=None):
@@ -219,3 +229,182 @@ class DeviceRestartView(APIView):
             },
         )
         return Response({"ok": True, "message": f"Restart signal sent to {device.name}."})
+
+
+# ─── Device Local Video Metadata ──────────────────────────────────
+
+class LocalVideoMetadataView(APIView):
+    """POST — device reports local video metadata for analytics.
+    Does NOT receive the video file itself; playback is entirely client-side.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        device_code = request.data.get("device_code", "")
+        video_name  = request.data.get("video_name", "")
+        video_type  = request.data.get("type", "local")
+
+        if not device_code or not video_name:
+            return Response(
+                {"error": "device_code and video_name are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "ok": True,
+                "message": f"Local video '{video_name}' recorded for device {device_code}.",
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+# ─── Phone → TV File Transfer ─────────────────────────────────────
+
+class SendFileView(APIView):
+    """POST — phone uploads a video file to be transferred to a TV device.
+    The file is saved to media/transfers/ and the TV is notified via WebSocket.
+    """
+    permission_classes = [AllowAny]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        device_code = request.data.get("device_code", "").upper()
+        file_obj = request.FILES.get("file")
+
+        if not device_code or not file_obj:
+            return Response(
+                {"error": "device_code and file are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate device
+        try:
+            device = Device.objects.get(device_code=device_code, is_active=True)
+        except Device.DoesNotExist:
+            return Response(
+                {"error": "Invalid or inactive device code."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Validate file type
+        if file_obj.content_type not in ALLOWED_TRANSFER_TYPES:
+            return Response(
+                {"error": f"Unsupported file type: {file_obj.content_type}. Allowed: mp4, webm, quicktime."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate file size
+        if file_obj.size > MAX_TRANSFER_SIZE:
+            return Response(
+                {"error": f"File too large ({file_obj.size // (1024*1024)} MB). Maximum is 200 MB."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Save file to media/transfers/
+        transfer_dir = os.path.join(settings.MEDIA_ROOT, "transfers")
+        os.makedirs(transfer_dir, exist_ok=True)
+
+        safe_name = f"{uuid.uuid4().hex[:8]}_{file_obj.name}"
+        file_path = os.path.join(transfer_dir, safe_name)
+
+        with open(file_path, "wb+") as dest:
+            for chunk in file_obj.chunks():
+                dest.write(chunk)
+
+        file_url = f"{settings.MEDIA_URL}transfers/{safe_name}"
+
+        # Create transfer record
+        transfer = FileTransfer.objects.create(
+            device=device,
+            file_name=file_obj.name,
+            file_url=file_url,
+            file_type=file_obj.content_type,
+            file_size=file_obj.size,
+            status=FileTransfer.STATUS_SENT,
+        )
+
+        # Send WebSocket events to TV
+        channel_layer = get_channel_layer()
+        group_name = f"device_transfer_{device_code}"
+
+        # 1. transfer_started
+        async_to_sync(channel_layer.group_send)(group_name, {
+            "type": "transfer_started",
+            "file_name": file_obj.name,
+        })
+
+        # 2. file_transfer (with download URL)
+        async_to_sync(channel_layer.group_send)(group_name, {
+            "type": "file_transfer",
+            "file_url": file_url,
+            "file_name": file_obj.name,
+            "file_type": file_obj.content_type,
+            "file_size": file_obj.size,
+            "transfer_id": str(transfer.id),
+        })
+
+        return Response({
+            "status": "file_sent",
+            "device": device_code,
+            "file_name": file_obj.name,
+            "file_url": file_url,
+            "transfer_id": str(transfer.id),
+        }, status=status.HTTP_201_CREATED)
+
+
+class TransferHistoryView(APIView):
+    """GET — list transfer history for a device."""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        device_code = request.query_params.get("device_code", "").upper()
+        if not device_code:
+            return Response({"error": "device_code is required."}, status=400)
+
+        try:
+            device = Device.objects.get(device_code=device_code)
+        except Device.DoesNotExist:
+            return Response({"error": "Device not found."}, status=404)
+
+        transfers = FileTransfer.objects.filter(device=device)[:50]
+        return Response(FileTransferSerializer(transfers, many=True).data)
+
+
+class TransferConfirmView(APIView):
+    """POST — TV confirms a file was downloaded successfully.
+    Optionally deletes the temp file from server.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        transfer_id = request.data.get("transfer_id", "")
+        if not transfer_id:
+            return Response({"error": "transfer_id is required."}, status=400)
+
+        try:
+            transfer = FileTransfer.objects.get(id=transfer_id)
+        except FileTransfer.DoesNotExist:
+            return Response({"error": "Transfer not found."}, status=404)
+
+        transfer.status = FileTransfer.STATUS_RECEIVED
+        transfer.save(update_fields=["status"])
+
+        # Optionally delete temp file
+        file_path = os.path.join(settings.BASE_DIR, transfer.file_url.lstrip("/"))
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+
+        # Notify via WebSocket
+        channel_layer = get_channel_layer()
+        group_name = f"device_transfer_{transfer.device.device_code}"
+        async_to_sync(channel_layer.group_send)(group_name, {
+            "type": "transfer_completed",
+            "file_name": transfer.file_name,
+            "transfer_id": str(transfer.id),
+        })
+
+        return Response({"ok": True, "message": "Transfer confirmed."})

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Device, Heartbeat
+from .models import Device, Heartbeat, FileTransfer
 
 
 class DeviceSerializer(serializers.ModelSerializer):
@@ -37,3 +37,11 @@ class HeartbeatSerializer(serializers.ModelSerializer):
         model = Heartbeat
         fields = ["id", "device", "timestamp", "status"]
         read_only_fields = ["id", "device", "timestamp"]
+
+
+class FileTransferSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FileTransfer
+        fields = ["id", "device", "file_name", "file_url", "file_type", "file_size", "status", "created_at"]
+        read_only_fields = ["id", "created_at"]
+

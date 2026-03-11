@@ -1,23 +1,34 @@
-import { useState, useEffect, useRef } from "react";
-import { Settings, X, LogOut, Trash2, Info, FileText, Mail } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Settings, X, LogOut, Trash2, Info, FileText, Mail, Upload, Send, FolderOpen, Clock } from "lucide-react";
 import logo from "../images/logo.jpeg";
+import { getLocalVideoUrl, saveReceivedFile } from "../utils/localVideoDb";
 
 const PLAYER_API = import.meta.env.VITE_API_BASE || "http://localhost:8000/api";
+const WS_BASE = import.meta.env.VITE_WS_BASE || "ws://localhost:8000";
 const HEARTBEAT_INTERVAL = 30000;
 const POLL_INTERVAL = 60000;
 
 export default function DevicePlayer() {
     const [step, setStep] = useState("login"); // "login" | "playing"
     const [code, setCode] = useState("");
+    const [deviceCode, setDeviceCode] = useState(localStorage.getItem("device_code") || "");
     const [deviceToken, setDeviceToken] = useState(localStorage.getItem("device_token") || "");
     const [assignment, setAssignment] = useState(null);
     const [currentVideoIdx, setCurrentVideoIdx] = useState(0);
     const [error, setError] = useState("");
     const [showSettings, setShowSettings] = useState(false);
-    const [settingsMenu, setSettingsMenu] = useState(null); // "main" | "about" | "terms" | "contact"
+    const [settingsMenu, setSettingsMenu] = useState(null);
+    const [localVideoUrl, setLocalVideoUrl] = useState(null);
+
+    // Transfer queue state
+    const [transferNotification, setTransferNotification] = useState(null);
+    const transferQueueRef = useRef([]);
+    const processingRef = useRef(false);
+
     const videoRef = useRef();
     const heartbeatRef = useRef();
     const pollRef = useRef();
+    const wsRef = useRef(null);
 
     const deviceFetch = async (path, options = {}) => {
         return fetch(`${PLAYER_API}${path}`, {
@@ -31,12 +42,24 @@ export default function DevicePlayer() {
         if (deviceToken) setStep("playing");
     }, []);
 
-    // Reset video tracking when active assignment changes 
+    // Mobile redirect: after login, if on a narrow screen redirect to phone dashboard
+    useEffect(() => {
+        if (step === "playing" && window.innerWidth < 768 && deviceCode) {
+            window.location.href = "/device/phone";
+        }
+    }, [step]);
+
+    // On mount: load local video from IndexedDB
+    useEffect(() => {
+        getLocalVideoUrl()
+            .then((url) => { if (url) setLocalVideoUrl(url); })
+            .catch(() => {});
+    }, []);
+
+    // Reset video tracking when active assignment changes
     useEffect(() => {
         if (assignment?.id) setCurrentVideoIdx(0);
     }, [assignment?.id]);
-
-
 
     // Heartbeat
     useEffect(() => {
@@ -68,6 +91,101 @@ export default function DevicePlayer() {
         return () => clearInterval(pollRef.current);
     }, [step, deviceToken]);
 
+    // ── Transfer Queue Processor ──────────────────────────
+
+    const processQueue = useCallback(async () => {
+        if (processingRef.current || transferQueueRef.current.length === 0) return;
+        processingRef.current = true;
+
+        while (transferQueueRef.current.length > 0) {
+            const item = transferQueueRef.current[0];
+            try {
+                setTransferNotification(`Downloading: ${item.file_name}...`);
+
+                // Build full URL for download
+                const downloadUrl = item.file_url.startsWith("http")
+                    ? item.file_url
+                    : `${window.location.protocol}//${window.location.hostname}:8000${item.file_url}`;
+
+                const response = await fetch(downloadUrl);
+                if (!response.ok) throw new Error("Download failed");
+
+                const blob = await response.blob();
+                await saveReceivedFile(blob, item.file_name, item.file_type);
+
+                // Confirm to backend
+                fetch(`${PLAYER_API}/device/transfer-confirm/`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ transfer_id: item.transfer_id }),
+                }).catch(() => {});
+
+                setTransferNotification(`✓ Received: ${item.file_name}`);
+                setTimeout(() => setTransferNotification(null), 4000);
+            } catch (err) {
+                console.error("Transfer download failed:", err);
+                setTransferNotification(`✗ Failed: ${item.file_name}`);
+                setTimeout(() => setTransferNotification(null), 4000);
+            }
+            transferQueueRef.current.shift();
+        }
+
+        processingRef.current = false;
+    }, []);
+
+    // ── WebSocket for File Transfers ──────────────────────
+
+    useEffect(() => {
+        if (step !== "playing" || !deviceCode) return;
+
+        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const wsUrl = `${protocol}://${window.location.host}/ws/device/${deviceCode}/transfer/`;
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => console.log("Transfer WS connected:", deviceCode);
+        ws.onclose = () => console.log("Transfer WS disconnected");
+        ws.onerror = (e) => console.error("Transfer WS error:", e);
+
+        ws.onmessage = (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                console.log("Transfer WS message:", data);
+
+                if (data.type === "transfer_started") {
+                    setTransferNotification(`Incoming: ${data.file_name}`);
+                }
+
+                if (data.type === "file_transfer") {
+                    // Add to queue
+                    transferQueueRef.current.push({
+                        file_url: data.file_url,
+                        file_name: data.file_name,
+                        file_type: data.file_type,
+                        file_size: data.file_size,
+                        transfer_id: data.transfer_id,
+                    });
+                    processQueue();
+                }
+
+                if (data.type === "transfer_completed") {
+                    setTransferNotification(`✓ Confirmed: ${data.file_name}`);
+                    setTimeout(() => setTransferNotification(null), 3000);
+                }
+
+                if (data.type === "transfer_failed") {
+                    setTransferNotification(`✗ Failed: ${data.file_name}`);
+                    setTimeout(() => setTransferNotification(null), 4000);
+                }
+            } catch (err) {
+                console.error("WS parse error:", err);
+            }
+        };
+
+        return () => { ws.close(); wsRef.current = null; };
+    }, [step, deviceCode, processQueue]);
+
+
     const handleLogin = async (e) => {
         e.preventDefault();
         setError("");
@@ -80,7 +198,9 @@ export default function DevicePlayer() {
             const data = await res.json();
             if (!res.ok) { setError(data.error || "Authentication failed"); return; }
             localStorage.setItem("device_token", data.device_token);
+            localStorage.setItem("device_code", code.toUpperCase());
             setDeviceToken(data.device_token);
+            setDeviceCode(code.toUpperCase());
             setStep("playing");
         } catch {
             setError("Network error. Check connection.");
@@ -89,7 +209,9 @@ export default function DevicePlayer() {
 
     const handleLogout = () => {
         localStorage.removeItem("device_token");
+        localStorage.removeItem("device_code");
         setDeviceToken("");
+        setDeviceCode("");
         setAssignment(null);
         setStep("login");
         setCode("");
@@ -108,9 +230,6 @@ export default function DevicePlayer() {
 
     const onVideoEnded = () => {
         if (!assignment || videos.length === 0) return;
-
-        // If there's only 1 video, it will loop naturally via the `loop` attribute.
-        // We only need to manually advance if there are multiple videos.
         if (videos.length > 1) {
             const next = (currentVideoIdx + 1) % videos.length;
             if (next === 0 && !(assignment?.loop_enabled && (isSingleVideo || assignment?.playlist?.loop_enabled))) {
@@ -122,19 +241,18 @@ export default function DevicePlayer() {
     };
 
     const currentVideo = videos.length > 0 ? videos[currentVideoIdx] : null;
-
     const autoplayEnabled = isSingleVideo ? true : (assignment?.playlist?.autoplay ?? true);
     const titleOverlay = isSingleVideo ? "" : (assignment?.playlist?.title_overlay || "");
 
-    // Force explicit programmatic play whenever the video changes
+    // Force programmatic play whenever the video changes
     useEffect(() => {
         if (currentVideo && videoRef.current) {
             videoRef.current.load();
-            videoRef.current.play().catch(e => console.warn("Autoplay naturally rejected by browser:", e));
+            videoRef.current.play().catch(e => console.warn("Autoplay rejected:", e));
         }
     }, [currentVideo?.id]);
 
-    // Determine the next video to preload
+    // Next video preload
     const nextVideoIdx = videos.length > 0 ? (currentVideoIdx + 1) % videos.length : null;
     const nextVideo = (nextVideoIdx !== null && (nextVideoIdx !== 0 || (assignment?.loop_enabled && (isSingleVideo || assignment?.playlist?.loop_enabled))))
         ? videos[nextVideoIdx]
@@ -172,8 +290,10 @@ export default function DevicePlayer() {
     // ── Player screen ──────────────────────────────────────
     return (
         <div className="min-h-screen bg-black relative overflow-hidden">
-            {/* Video player */}
-            {currentVideo?.video?.cloudinary_url ? (
+            {/* Video player — Priority: 1) Local IndexedDB video  2) Playlist  3) Waiting + QR code */}
+            {localVideoUrl ? (
+                <video className="w-full h-screen object-cover" src={localVideoUrl} autoPlay loop muted playsInline preload="auto" />
+            ) : currentVideo?.video?.cloudinary_url ? (
                 <>
                     <video
                         ref={videoRef}
@@ -182,18 +302,11 @@ export default function DevicePlayer() {
                         src={currentVideo.video.cloudinary_url}
                         autoPlay={autoplayEnabled}
                         loop={videos.length === 1 && assignment?.loop_enabled && (isSingleVideo || assignment?.playlist?.loop_enabled)}
-                        muted
-                        playsInline
-                        preload="auto"
+                        muted playsInline preload="auto"
                         onEnded={onVideoEnded}
-                        onError={(e) => {
-                            console.error("Video playback error details:", e);
-                            onVideoEnded();
-                        }}
+                        onError={(e) => { console.error("Playback error:", e); onVideoEnded(); }}
                         style={{ transform: `rotate(${currentVideo.video.rotation || 0}deg)` }}
                     />
-
-                    {/* Title Overlay */}
                     {titleOverlay && (
                         <div className="absolute bottom-10 left-10 right-10 pointer-events-none">
                             <h2 className="text-white text-5xl font-bold drop-shadow-lg tracking-tight bg-black/40 inline-block px-6 py-3 rounded-2xl backdrop-blur-sm shadow-xl border border-white/10">
@@ -201,16 +314,8 @@ export default function DevicePlayer() {
                             </h2>
                         </div>
                     )}
-                    {/* Preload next video secretly for smooth transition */}
                     {nextVideo?.video?.cloudinary_url && (
-                        <video
-                            key={`preload-${nextVideo.id}`}
-                            preload="auto"
-                            className="hidden"
-                            muted
-                            playsInline
-                            src={nextVideo.video.cloudinary_url}
-                        />
+                        <video key={`preload-${nextVideo.id}`} preload="auto" className="hidden" muted playsInline src={nextVideo.video.cloudinary_url} />
                     )}
                 </>
             ) : assignment ? (
@@ -222,7 +327,22 @@ export default function DevicePlayer() {
                     <div className="w-24 h-24 rounded-3xl flex items-center justify-center mb-6 shadow-glow animate-pulse-slow bg-white overflow-hidden">
                         <img src={logo} alt="AuraLink Logo" className="w-full h-full object-contain" />
                     </div>
-                    <p className="text-gray-600 text-lg">Waiting for content...</p>
+                    <p className="text-gray-600 text-lg mb-6">Waiting for content...</p>
+
+                    {/* Device Code */}
+                    {deviceCode && (
+                        <div className="text-center mt-4">
+                            <p className="text-gray-500 text-xs uppercase tracking-wider mb-2">Device Code</p>
+                            <p className="text-white font-mono text-3xl font-bold tracking-widest">{deviceCode}</p>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Transfer notification toast */}
+            {transferNotification && (
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 bg-gray-900 border border-gray-700 rounded-2xl px-5 py-3 shadow-xl z-50 animate-fade-in">
+                    <p className="text-white text-sm font-medium whitespace-nowrap">{transferNotification}</p>
                 </div>
             )}
 
@@ -249,18 +369,42 @@ export default function DevicePlayer() {
 
                         {settingsMenu === "main" && (
                             <div className="flex-1 p-4 space-y-2">
+                                {/* Section: File Transfer */}
+                                <p className="text-gray-600 text-[10px] uppercase tracking-widest px-4 pt-2 pb-1">File Transfer</p>
                                 {[
-                                    { icon: LogOut, label: "Logout", action: handleLogout, danger: true },
-                                    { icon: Trash2, label: "Delete Device", action: handleDeleteDevice, danger: true },
-                                    { icon: Info, label: "About", action: () => setSettingsMenu("about") },
-                                    { icon: FileText, label: "Terms of Service", action: () => setSettingsMenu("terms") },
-                                    { icon: Mail, label: "Contact", action: () => setSettingsMenu("contact") },
-                                ].map(({ icon: Icon, label, action, danger }) => (
+                                    { icon: Send, label: "Send / Receive Files", action: () => { setShowSettings(false); window.location.href = `/device/transfer`; }, color: "text-purple-300 hover:bg-purple-500/10" },
+                                    { icon: FolderOpen, label: "Local File Manager", action: () => { setShowSettings(false); window.location.href = "/device/files"; }, color: "text-cyan-300 hover:bg-cyan-500/10" },
+                                    { icon: Clock, label: "Transfer History", action: () => { setShowSettings(false); window.location.href = `/device/transfers?code=${deviceCode}`; }, color: "text-blue-300 hover:bg-blue-500/10" },
+                                ].map(({ icon: Icon, label, action, color }) => (
                                     <button key={label} onClick={action}
-                                        className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left transition-colors duration-200
-                      ${danger ? "text-red-400 hover:bg-red-500/10" : "text-gray-300 hover:bg-gray-800"}`}>
+                                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors duration-200 ${color}`}>
                                         <Icon className="w-5 h-5" />
-                                        <span className="font-medium">{label}</span>
+                                        <span className="font-medium text-sm">{label}</span>
+                                    </button>
+                                ))}
+
+                                {/* Section: Media */}
+                                <p className="text-gray-600 text-[10px] uppercase tracking-widest px-4 pt-4 pb-1">Media</p>
+                                <button onClick={() => { setShowSettings(false); window.location.href = "/device/local-video"; }}
+                                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors duration-200 text-purple-300 hover:bg-purple-500/10">
+                                    <Upload className="w-5 h-5" />
+                                    <span className="font-medium text-sm flex-1">Upload Local Video</span>
+                                    {localVideoUrl && <span className="w-2 h-2 rounded-full bg-purple-400 flex-shrink-0" title="Active" />}
+                                </button>
+
+                                {/* Section: Device */}
+                                <p className="text-gray-600 text-[10px] uppercase tracking-widest px-4 pt-4 pb-1">Device</p>
+                                {[
+                                    { icon: LogOut, label: "Logout", action: handleLogout, cls: "text-red-400 hover:bg-red-500/10" },
+                                    { icon: Trash2, label: "Delete Device", action: handleDeleteDevice, cls: "text-red-400 hover:bg-red-500/10" },
+                                    { icon: Info, label: "About", action: () => setSettingsMenu("about"), cls: "text-gray-300 hover:bg-gray-800" },
+                                    { icon: FileText, label: "Terms of Service", action: () => setSettingsMenu("terms"), cls: "text-gray-300 hover:bg-gray-800" },
+                                    { icon: Mail, label: "Contact", action: () => setSettingsMenu("contact"), cls: "text-gray-300 hover:bg-gray-800" },
+                                ].map(({ icon: Icon, label, action, cls }) => (
+                                    <button key={label} onClick={action}
+                                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-colors duration-200 ${cls}`}>
+                                        <Icon className="w-5 h-5" />
+                                        <span className="font-medium text-sm">{label}</span>
                                     </button>
                                 ))}
                             </div>
@@ -271,6 +415,12 @@ export default function DevicePlayer() {
                                 <p className="text-white font-semibold text-base">AuraLink Display v1.0</p>
                                 <p>Digital Signage Management Platform — Device Player</p>
                                 <p>This device is registered and managed by your organization's AuraLink admin.</p>
+                                {deviceCode && (
+                                    <div className="mt-4 bg-gray-900 rounded-xl p-3">
+                                        <p className="text-gray-500 text-xs mb-1">Device Code</p>
+                                        <p className="text-white font-mono text-lg tracking-wider">{deviceCode}</p>
+                                    </div>
+                                )}
                             </div>
                         )}
 

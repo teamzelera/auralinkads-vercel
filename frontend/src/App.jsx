@@ -9,6 +9,11 @@ import Playlists from "./pages/Playlists";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
 import DevicePlayer from "./pages/DevicePlayer";
+import LocalVideoUpload from "./pages/LocalVideoUpload";
+import FileTransfer from "./pages/FileTransfer";
+import PhoneDashboard from "./pages/PhoneDashboard";
+import LocalFileManager from "./pages/LocalFileManager";
+import TransferHistory from "./pages/TransferHistory";
 import logo from "./images/logo.jpeg";
 
 function PrivateRoute({ children }) {
@@ -25,7 +30,7 @@ function PrivateRoute({ children }) {
       </div>
     );
   }
-  return user ? children : <Navigate to="/login" replace />;
+  return user ? children : <Navigate to="/ladminsirlogin" replace />;
 }
 
 export default function App() {
@@ -46,10 +51,20 @@ export default function App() {
           }}
         />
         <Routes>
-          <Route path="/login" element={<Login />} />
+          <Route path="/ladminsirlogin" element={<Login />} />
+          <Route path="/login" element={<Navigate to="/ladminsirlogin" replace />} />
+          
+          <Route path="/" element={<DevicePlayer />} />
           <Route path="/device" element={<DevicePlayer />} />
+          
+          <Route path="/device/local-video" element={<LocalVideoUpload />} />
+          <Route path="/device/transfer" element={<FileTransfer />} />
+          <Route path="/device/phone" element={<PhoneDashboard />} />
+          <Route path="/device/files" element={<LocalFileManager />} />
+          <Route path="/device/transfers" element={<TransferHistory />} />
+          
           <Route
-            path="/"
+            path="/dashboard"
             element={<PrivateRoute><Dashboard /></PrivateRoute>}
           />
           <Route

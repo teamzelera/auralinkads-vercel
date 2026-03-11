@@ -46,3 +46,29 @@ class Heartbeat(models.Model):
 
     def __str__(self):
         return f"{self.device.name} — {self.timestamp}"
+
+
+class FileTransfer(models.Model):
+    STATUS_SENT = "sent"
+    STATUS_RECEIVED = "received"
+    STATUS_FAILED = "failed"
+    STATUS_CHOICES = [
+        (STATUS_SENT, "Sent"),
+        (STATUS_RECEIVED, "Received"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="transfers")
+    file_name = models.CharField(max_length=500)
+    file_url = models.CharField(max_length=1000)
+    file_type = models.CharField(max_length=50)
+    file_size = models.BigIntegerField(default=0)  # bytes
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_SENT)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.file_name} → {self.device.name} ({self.status})"

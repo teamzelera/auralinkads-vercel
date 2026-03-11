@@ -17,7 +17,7 @@ export default function Login() {
         setLoading(true);
         try {
             await login(form.username, form.password);
-            navigate("/");
+            navigate("/dashboard");
         } catch (err) {
             toast.error(err.response?.data?.detail || "Invalid credentials");
         } finally {

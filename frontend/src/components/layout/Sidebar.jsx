@@ -7,7 +7,7 @@ import {
 import logo from "../../images/logo.jpeg";
 
 const navItems = [
-    { to: "/", icon: LayoutDashboard, label: "Dashboard" },
+    { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
     { to: "/devices", icon: Monitor, label: "Devices" },
     { to: "/videos", icon: Film, label: "Videos" },
     { to: "/playlists", icon: ListVideo, label: "Playlists" },
@@ -21,7 +21,7 @@ export default function Sidebar() {
 
     const handleLogout = () => {
         logout();
-        navigate("/login");
+        navigate("/ladminsirlogin");
     };
 
     return (
@@ -45,7 +45,7 @@ export default function Sidebar() {
                     <NavLink
                         key={to}
                         to={to}
-                        end={to === "/"}
+                        end={to === "/dashboard"}
                         className={({ isActive }) =>
                             isActive ? "sidebar-item-active" : "sidebar-item"
                         }

@@ -165,6 +165,11 @@ CLOUDINARY_STORAGE = {
 DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
 
 MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
+
+# Allow uploads up to 200 MB for file transfers
+DATA_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 200 * 1024 * 1024
 
 # Device token settings
 DEVICE_TOKEN_LENGTH = 64
