@@ -357,9 +357,8 @@ export default function DevicePlayer() {
             {/*
               Priority:
               1) IndexedDB active playlist (set from LocalFileManager)
-              2) Single local IndexedDB video (from LocalVideoUpload)
-              3) Backend-assigned cloud playlist/video
-              4) Waiting screen
+              2) Backend-assigned cloud playlist/video
+              3) Waiting screen
             */}
             {activeIndexedPlaylist && idxVideoUrl ? (
                 <>
@@ -378,8 +377,6 @@ export default function DevicePlayer() {
                         </span>
                     </div>
                 </>
-            ) : localVideoUrl ? (
-                <video className="w-full h-screen object-cover" src={localVideoUrl} autoPlay loop muted playsInline preload="auto" />
             ) : currentVideo?.video?.cloudinary_url ? (
                 <>
                     <video

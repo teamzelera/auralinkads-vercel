@@ -16,6 +16,35 @@ import LocalFileManager from "./pages/LocalFileManager";
 import TransferHistory from "./pages/TransferHistory";
 import DisplayRotation from "./pages/DisplayRotation";
 import logo from "./images/logo.jpeg";
+import React from "react";
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+    this.setState({ errorInfo });
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 20, background: "black", color: "red", minHeight: "100vh" }}>
+          <h1 style={{ fontSize: 24, fontWeight: "bold" }}>Application Error</h1>
+          <p>{this.state.error && this.state.error.toString()}</p>
+          <pre style={{ marginTop: 20, fontSize: 12, color: "orange", whiteSpace: "pre-wrap" }}>
+            {this.state.errorInfo && this.state.errorInfo.componentStack}
+          </pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -36,62 +65,64 @@ function PrivateRoute({ children }) {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            style: {
-              background: "#141A2A",
-              color: "#E6EAF2",
-              border: "1px solid #1E2942",
-              borderRadius: "12px",
-            },
-            success: { iconTheme: { primary: "#00D97E", secondary: "#141A2A" } },
-            error: { iconTheme: { primary: "#EF4444", secondary: "#141A2A" } },
-          }}
-        />
-        <Routes>
-          <Route path="/ladminsirlogin" element={<Login />} />
-          <Route path="/login" element={<Navigate to="/ladminsirlogin" replace />} />
-          
-          <Route path="/" element={<DevicePlayer />} />
-          <Route path="/device" element={<DevicePlayer />} />
-          
-          <Route path="/device/local-video" element={<LocalVideoUpload />} />
-          <Route path="/device/transfer" element={<FileTransfer />} />
-          <Route path="/device/phone" element={<PhoneDashboard />} />
-          <Route path="/device/files" element={<LocalFileManager />} />
-          <Route path="/device/transfers" element={<TransferHistory />} />
-          <Route path="/device/display-rotation" element={<DisplayRotation />} />
-          
-          <Route
-            path="/dashboard"
-            element={<PrivateRoute><Dashboard /></PrivateRoute>}
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              style: {
+                background: "#141A2A",
+                color: "#E6EAF2",
+                border: "1px solid #1E2942",
+                borderRadius: "12px",
+              },
+              success: { iconTheme: { primary: "#00D97E", secondary: "#141A2A" } },
+              error: { iconTheme: { primary: "#EF4444", secondary: "#141A2A" } },
+            }}
           />
-          <Route
-            path="/devices"
-            element={<PrivateRoute><Devices /></PrivateRoute>}
-          />
-          <Route
-            path="/videos"
-            element={<PrivateRoute><Videos /></PrivateRoute>}
-          />
-          <Route
-            path="/playlists"
-            element={<PrivateRoute><Playlists /></PrivateRoute>}
-          />
-          <Route
-            path="/analytics"
-            element={<PrivateRoute><Analytics /></PrivateRoute>}
-          />
-          <Route
-            path="/settings"
-            element={<PrivateRoute><Settings /></PrivateRoute>}
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+          <Routes>
+            <Route path="/ladminsirlogin" element={<Login />} />
+            <Route path="/login" element={<Navigate to="/ladminsirlogin" replace />} />
+            
+            <Route path="/" element={<DevicePlayer />} />
+            <Route path="/device" element={<DevicePlayer />} />
+            
+            <Route path="/device/local-video" element={<LocalVideoUpload />} />
+            <Route path="/device/transfer" element={<FileTransfer />} />
+            <Route path="/device/phone" element={<PhoneDashboard />} />
+            <Route path="/device/files" element={<LocalFileManager />} />
+            <Route path="/device/transfers" element={<TransferHistory />} />
+            <Route path="/device/display-rotation" element={<DisplayRotation />} />
+            
+            <Route
+              path="/dashboard"
+              element={<PrivateRoute><Dashboard /></PrivateRoute>}
+            />
+            <Route
+              path="/devices"
+              element={<PrivateRoute><Devices /></PrivateRoute>}
+            />
+            <Route
+              path="/videos"
+              element={<PrivateRoute><Videos /></PrivateRoute>}
+            />
+            <Route
+              path="/playlists"
+              element={<PrivateRoute><Playlists /></PrivateRoute>}
+            />
+            <Route
+              path="/analytics"
+              element={<PrivateRoute><Analytics /></PrivateRoute>}
+            />
+            <Route
+              path="/settings"
+              element={<PrivateRoute><Settings /></PrivateRoute>}
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
