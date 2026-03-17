@@ -460,7 +460,7 @@ export default function DevicePlayer() {
                         </div>
 
                         {settingsMenu === "main" && (
-                            <div className="flex-1 p-4 space-y-2">
+                            <div className="flex-1 p-4 space-y-2 overflow-y-auto">
                                 {/* Section: File Transfer */}
                                 <p className="text-gray-600 text-[10px] uppercase tracking-widest px-4 pt-2 pb-1">File Transfer</p>
                                 {[
@@ -503,7 +503,7 @@ export default function DevicePlayer() {
                         )}
 
                         {settingsMenu === "about" && (
-                            <div className="flex-1 p-5 text-gray-400 text-sm space-y-3">
+                            <div className="flex-1 p-5 text-gray-400 text-sm space-y-3 overflow-y-auto">
                                 <p className="text-white font-semibold text-base">AuraLink Display v1.0</p>
                                 <p>Digital Signage Management Platform — Device Player</p>
                                 <p>This device is registered and managed by your organization's AuraLink admin.</p>
@@ -525,7 +525,7 @@ export default function DevicePlayer() {
                         )}
 
                         {settingsMenu === "contact" && (
-                            <div className="flex-1 p-5 text-gray-400 text-sm space-y-3">
+                            <div className="flex-1 p-5 text-gray-400 text-sm space-y-3 overflow-y-auto">
                                 <p className="text-white font-semibold text-base">Contact</p>
                                 <p>For support, contact your AuraLink administrator.</p>
                                 <p>AuraLink Digital Signage Platform</p>
