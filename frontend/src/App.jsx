@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Capacitor } from "@capacitor/core";
 import { Toaster } from "react-hot-toast";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Login from "./pages/Login";
@@ -63,11 +64,14 @@ function PrivateRoute({ children }) {
   return user ? children : <Navigate to="/ladminsirlogin" replace />;
 }
 
+// Use HashRouter on Android (Capacitor file:// protocol), BrowserRouter on web
+const Router = Capacitor.isNativePlatform() ? HashRouter : BrowserRouter;
+
 export default function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <BrowserRouter>
+        <Router>
           <Toaster
             position="top-right"
             toastOptions={{
@@ -121,7 +125,7 @@ export default function App() {
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-        </BrowserRouter>
+        </Router>
       </AuthProvider>
     </ErrorBoundary>
   );
